@@ -1,0 +1,161 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>FoodGo</title><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#0b6b4f">
+<style>
+:root{--bg:#f3f5f1;--card:#fff;--ink:#14201a;--mut:#66736b;--pri:#0b6b4f;--hot:#d62d20;--line:#dde3dc}
+@media(prefers-color-scheme:dark){:root{--bg:#101612;--card:#18211b;--ink:#eaf1ec;--mut:#92a398;--pri:#36b387;--line:#2a372e}}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom))}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;max-width:760px;margin:auto}
+header b{font-size:20px;letter-spacing:-.3px}header small{color:var(--mut)}
+main{max-width:760px;margin:auto;padding:0 16px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;color:var(--mut);padding:12px 4px;font:inherit;font-size:13px}
+nav button.on{color:var(--pri);font-weight:700}
+.card{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+.col{display:block}.em{font-size:34px}.g{flex:1;min-width:0}.g small{display:block;color:var(--mut)}
+.pr{color:var(--pri)}.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:20px;padding:8px 14px;font:inherit;white-space:nowrap}
+.chip.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.btn{border:0;background:var(--pri);color:#fff;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+.btn.alt{background:none;color:var(--hot);border:1px solid var(--hot)}.btn.w{width:100%;margin-top:6px}
+.q{display:flex;align-items:center;gap:10px}.q button{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:18px}
+input,select,textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;margin:4px 0 8px}
+:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.st{display:inline-block;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700;background:var(--line)}
+.st.placed{background:#ffe08a;color:#4a3800}.st.delivered{background:#bde8d3;color:#0a4a34}.st.cancelled{background:#f6c4bf;color:#7a1a12}.st.accepted,.st.picked_up{background:#c4dcf6;color:#12365e}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stats div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.stats b{font-size:24px;display:block}.stats span{color:var(--mut)}
+.auth{max-width:380px;margin:8vh auto 0}.auth h1{font-size:34px;margin:0 0 4px;letter-spacing:-1px}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}.err{color:var(--hot);min-height:20px}
+.empty{text-align:center;color:var(--mut);padding:40px 0}
+</style></head><body>
+<header id="hd"></header><main id="app"></main><nav id="nv"></nav>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
+<script>
+if(typeof supabase==='undefined'){document.body.innerHTML='<div style="max-width:420px;margin:12vh auto;padding:16px;font:16px system-ui"><h2>Internet connection lagbe</h2><p>Supabase library load hoy nai. Internet check kore page reload (Ctrl+F5) koro.</p></div>';throw new Error('supabase-js not loaded')}
+const sb=supabase.createClient(FOODGO_CONFIG.SUPABASE_URL,FOODGO_CONFIG.SUPABASE_KEY);
+async function diag(){const{error}=await sb.from('restaurants').select('id',{head:true,count:'exact'});
+ if(!error)return '';
+ if(/relation|schema cache|does not exist|PGRST205|42P01/i.test(error.message+(error.code||'')))return 'SETUP';
+ return '⚠️ Supabase connect hocche na: '+error.message}
+const ADMINS=(FOODGO_CONFIG.ADMIN_EMAILS||[]).map(x=>x.toLowerCase());
+const SQL_URL='https://supabase.com/dashboard/project/'+new URL(FOODGO_CONFIG.SUPABASE_URL).hostname.split('.')[0]+'/sql/new';
+async function copySql(){try{const t=await (await fetch('setup.sql',{cache:'no-store'})).text();
+ try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}
+ $('#cp').textContent='✅ Copy hoyeche! Ekhon Supabase e paste kore RUN koro'}catch(e){$('#cp').textContent='Copy hoy nai: folder er setup.sql file ta khule shob copy koro'}}
+const setupBox=()=>`<div class=card style="flex-direction:column;align-items:stretch;border-color:var(--hot)"><b>⚠️ Ekbar database setup lagbe (prothombar)</b>
+ <small style="color:var(--mut)">1) Niche button e click → SQL copy hobe &nbsp; 2) Supabase SQL Editor khule paste kore RUN &nbsp; 3) Ei page reload (F5)</small>
+ <button class="btn w" onclick=copySql()>1. Setup SQL copy koro</button><span id=cp style="font-size:13px"></span>
+ <a class="btn w" style="text-align:center;text-decoration:none" href="${SQL_URL}" target=_blank rel=noopener>2. Supabase SQL Editor kholo</a></div>`;
+const $=s=>document.querySelector(s), app=h=>$('#app').innerHTML=h;
+const tk=n=>'৳'+Math.round(n), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const q=async(t,o)=>(await sb.from(t).select('*').order(o)).data||[];
+const TABS={customer:[['menu','🍽️ Menu'],['cart','🛒 Cart'],['orders','📦 Orders']],rider:[['avail','🛵 New'],['mine','✅ My jobs']],admin:[['dash','📊 Stats'],['orders','📦 Orders'],['users','👥 Users'],['menu','🍔 Menu']]};
+const LBL={placed:'Placed',accepted:'Rider accepted',picked_up:'On the way',delivered:'Delivered',cancelled:'Cancelled'};
+let me=null,cur='',cart={},rests=[],prods=[],selR=null,authMode='login';
+
+async function init(){const{data:{session}}=await sb.auth.getSession();session?boot():authView()}
+async function authView(msg='',forceSetup=false){$('#hd').innerHTML='';$('#nv').innerHTML='';const dg=await diag();
+ app(`<div class=auth><h1>FoodGo 🍛</h1><p style="color:var(--mut)">${authMode=='login'?'Email ar password diye login koro':'Notun account khulo'}</p>
+ ${authMode=='signup'?'<input id=nm placeholder="Full name" autocomplete=name>':''}
+ <input id=em type=email placeholder="Email" autocomplete=email><input id=pw type=password placeholder="Password (min 6)" autocomplete=${authMode=='login'?'current-password':'new-password'}>
+ ${dg=='SETUP'||forceSetup?setupBox():''}<div class=err id=er>${esc(msg||(dg=='SETUP'?'':dg))}</div><button class="btn w" onclick=doAuth()>${authMode=='login'?'Login':'Sign up'}</button>
+ <p class=empty style="padding:14px 0"><a href=# onclick="authMode=authMode=='login'?'signup':'login';authView();return false">${authMode=='login'?'Account nai? Sign up':'Account ache? Login'}</a></p></div>`)}
+async function doAuth(){const er=m=>$('#er').textContent=m;
+ const email=$('#em').value.trim().toLowerCase(),password=$('#pw').value;
+ if(!email||!password)return er('Email ar password dao.');
+ er('Wait...');let r;
+ if(authMode=='login'){
+  r=await sb.auth.signInWithPassword({email,password});
+  if(r.error&&/invalid login/i.test(r.error.message)&&ADMINS.includes(email)){
+   // admin account ekhono nai hole eikhanei automatic toiri hobe (ei password-i admin password)
+   if(password.length<6)return er('Password kompokkhe 6 character hote hobe.');
+   const s=await sb.auth.signUp({email,password,options:{data:{full_name:'Admin'}}});
+   const exists=(s.error&&/already|registered/i.test(s.error.message))||(s.data?.user&&s.data.user.identities&&s.data.user.identities.length===0);
+   if(exists)return er('Ei admin email e account age theke ache, kintu password mile nai. Thik password dao. Bhule gele reset-admin-password.sql dekho.');
+   if(s.error)return er(/rate limit/i.test(s.error.message)?'Supabase email limit hoye geche. Setup SQL (setup.sql) ekbar run koro - tahole admin account ready thakbe (password: Nuren@123). Ba Supabase e Confirm email OFF koro.':s.error.message);
+   r=s.data.session?s:await sb.auth.signInWithPassword({email,password});
+  }
+ }else{
+  if(password.length<6)return er('Password kompokkhe 6 character hote hobe.');
+  r=await sb.auth.signUp({email,password,options:{data:{full_name:$('#nm').value.trim()}}});
+  if(!r.error&&!r.data.session)r=await sb.auth.signInWithPassword({email,password});
+ }
+ if(r.error)return er(/invalid login/i.test(r.error.message)?'Email ba password bhul. Account na thakle age Sign up koro.':/confirm/i.test(r.error.message)?'Email confirm kora hoy nai. setup.sql ta ekbar run koro.':/rate limit/i.test(r.error.message)?'Supabase email limit hoye geche. Supabase > Authentication > Sign In / Providers > Email > Confirm email OFF kore Save koro, tarpor kichukkhon pore abar chesta koro.':r.error.message);
+ if(!r.data.session)return authView('Login hoy nai. Abar chesta koro.');boot()}
+async function boot(){const{data:{user}}=await sb.auth.getUser();
+ let{data,error}=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
+ if(!data){await sb.rpc('ensure_profile');({data,error}=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle())}
+ if(error||!data){const why=error?error.message:'profile row nai';await sb.auth.signOut();authView('Profile paoa jay nai ['+why+']. Niche setup SQL ta (abar) run koro, tarpor reload kore login koro.',true);return}
+ me=data;
+ $('#hd').innerHTML=`<div><b>FoodGo</b><br><small>${esc(me.full_name||me.email)} · ${me.role}</small></div><button class="btn alt" onclick=logout()>Logout</button>`;
+ go(TABS[me.role][0][0])}
+async function logout(){await sb.auth.signOut();me=null;cart={};authView()}
+function go(t){cur=t;$('#nv').innerHTML=TABS[me.role].map(([k,l])=>`<button class="${k==t?'on':''}" onclick="go('${k}')">${l}${k=='cart'&&Object.keys(cart).length?` (${Object.keys(cart).length})`:''}</button>`).join('');V[me.role][t]()}
+
+/* customer */
+async function vMenu(){[rests,prods]=await Promise.all([q('restaurants','name'),q('products','name')]);
+ const r=rests.filter(x=>x.is_active);selR=selR||r[0]?.id;
+ app(`<div class=chips>${r.map(x=>`<button class="chip ${x.id==selR?'on':''}" onclick="selR='${x.id}';vMenu()">${esc(x.emoji)} ${esc(x.name)}</button>`).join('')}</div>`+
+ (prods.filter(p=>p.restaurant_id==selR&&p.is_available).map(p=>{const n=cart[p.id]?.qty||0;
+ return `<div class=card><div class=em>${esc(p.emoji)}</div><div class=g><b>${esc(p.name)}</b><small>${esc(p.description||'')}</small><b class=pr>${tk(p.price)}</b></div>
+ ${n?`<div class=q><button onclick="chg('${p.id}',-1)">−</button>${n}<button onclick="chg('${p.id}',1)">+</button></div>`:`<button class=btn onclick="chg('${p.id}',1)">Add</button>`}</div>`}).join('')||'<div class=empty>Ei restaurant e kono item nai.</div>'))}
+function chg(id,d){const p=prods.find(x=>x.id==id),o=Object.values(cart)[0];
+ if(o&&o.p.restaurant_id!=p.restaurant_id){if(!confirm('Cart e onno restaurant er item ache. Cart khali kore notun order shuru korbe?'))return;cart={}}
+ const n=(cart[id]?.qty||0)+d;n>0?cart[id]={p,qty:n}:delete cart[id];go(cur);}
+function vCart(){const L=Object.values(cart);if(!L.length)return app('<div class=empty>Cart khali. Menu theke item add koro.</div>');
+ const tot=L.reduce((s,x)=>s+x.p.price*x.qty,0);
+ app(L.map(x=>`<div class=card><div class=em>${esc(x.p.emoji)}</div><div class=g><b>${esc(x.p.name)}</b><small>${x.qty} × ${tk(x.p.price)}</small></div><div class=q><button onclick="chg('${x.p.id}',-1)">−</button>${x.qty}<button onclick="chg('${x.p.id}',1)">+</button></div></div>`).join('')+
+ `<div class=row><b>Total</b><b class=pr>${tk(tot)}</b></div><br><label>Delivery address</label><textarea id=ad rows=2>${esc(me.address||'')}</textarea>
+ <label>Phone</label><input id=ph value="${esc(me.phone||'')}" inputmode=tel><label>Note (optional)</label><input id=nt>
+ <div class=err id=er></div><button class="btn w" onclick=place()>Place order · ${tk(tot)}</button>`)}
+async function place(){const a=$('#ad').value.trim(),p=$('#ph').value.trim();if(!a||!p)return $('#er').textContent='Address ar phone dao.';
+ const{error}=await sb.rpc('place_order',{p_items:Object.values(cart).map(x=>({id:x.p.id,qty:x.qty})),p_address:a,p_phone:p,p_note:$('#nt').value});
+ if(error)return $('#er').textContent=error.message;
+ await sb.from('profiles').update({address:a,phone:p}).eq('id',me.id);me.address=a;me.phone=p;cart={};go('orders')}
+
+/* orders */
+const getO=async()=>(await sb.from('orders').select('*,order_items(name,qty,price)').order('created_at',{ascending:false}).limit(100)).data||[];
+function oCard(o,acts=''){return `<div class="card col"><div class=row><b>${tk(o.total)}</b><span class="st ${o.status}">${LBL[o.status]}</span></div>
+ <small style="color:var(--mut)">${new Date(o.created_at).toLocaleString()}</small>
+ <div>${(o.order_items||[]).map(i=>`${i.qty}× ${esc(i.name)}`).join(', ')}</div>
+ ${me.role!='customer'?`<div>👤 ${esc(o.customer_name)} · <a href="tel:${esc(o.phone)}">${esc(o.phone)}</a></div><div>📍 ${esc(o.address)}</div>`:''}
+ ${o.note?`<div>📝 ${esc(o.note)}</div>`:''}${o.rider_name&&me.role!='rider'?`<div>🛵 ${esc(o.rider_name)}</div>`:''}${acts}</div>`}
+const none='<div class=empty>Kono order nai.</div>';
+async function vOrdC(){const L=await getO();app(L.map(o=>oCard(o,o.status=='placed'?`<button class="btn alt" onclick="setO('${o.id}',{status:'cancelled'})">Cancel order</button>`:'')).join('')||none)}
+async function vOrdA(){const L=await getO();app(L.map(o=>oCard(o,`<select onchange="setO('${o.id}',{status:this.value})">${Object.keys(LBL).map(s=>`<option value=${s} ${s==o.status?'selected':''}>${LBL[s]}</option>`).join('')}</select>`)).join('')||none)}
+async function vAvail(){const L=(await getO()).filter(o=>!o.rider_id&&o.status=='placed');app(L.map(o=>oCard(o,`<button class="btn w" onclick="accept('${o.id}')">Accept delivery</button>`)).join('')||'<div class=empty>Ekhon kono notun order nai.</div>')}
+async function vMine(){const L=(await getO()).filter(o=>o.rider_id==me.id);app(L.map(o=>oCard(o,o.status=='accepted'?`<button class="btn w" onclick="setO('${o.id}',{status:'picked_up'})">Picked up</button>`:o.status=='picked_up'?`<button class="btn w" onclick="setO('${o.id}',{status:'delivered'})">Mark delivered</button>`:'')).join('')||none)}
+async function setO(id,p){const{error}=await sb.from('orders').update(p).eq('id',id);if(error)alert(error.message);go(cur)}
+async function accept(id){const{data,error}=await sb.from('orders').update({rider_id:me.id,rider_name:me.full_name||me.email,status:'accepted'}).eq('id',id).eq('status','placed').is('rider_id',null).select();
+ if(error||!data.length)alert('Order ta onno rider nilo ba cancel hoyeche.');go('mine')}
+
+/* admin */
+async function vDash(){const{data,error}=await sb.rpc('admin_stats');if(error)return app(`<div class=empty>${esc(error.message)}</div>`);const s=data;
+ app(`<div class=stats><div><b>${tk(s.total_sales)}</b><span>Total sales</span></div><div><b>${tk(s.today_sales)}</b><span>Ajker sales</span></div>
+ <div><b>${s.orders}</b><span>Total orders</span></div><div><b>${s.pending}</b><span>Cholche</span></div>
+ <div><b>${s.customers}</b><span>Customers</span></div><div><b>${s.riders}</b><span>Riders</span></div></div>`)}
+async function vUsers(){const L=await q('profiles','created_at');
+ app(L.map(u=>`<div class=card><div class=g><b>${esc(u.full_name||'—')}</b><small>${esc(u.email)}</small></div>
+ <select style="width:auto;margin:0" onchange="setR('${u.id}',this.value)" ${u.id==me.id?'disabled':''}>${['customer','rider','admin'].map(r=>`<option ${r==u.role?'selected':''}>${r}</option>`).join('')}</select></div>`).join(''))}
+async function setR(id,role){const{error}=await sb.from('profiles').update({role}).eq('id',id);if(error)alert(error.message);vUsers()}
+async function vMenuA(){[rests,prods]=await Promise.all([q('restaurants','name'),q('products','name')]);
+ app(`<div class="card col"><b>Notun item</b><select id=pr_r>${rests.map(r=>`<option value=${r.id}>${esc(r.name)}</option>`).join('')}</select>
+ <input id=pn placeholder="Item name"><input id=pp type=number placeholder="Price (৳)"><input id=pe placeholder="Emoji" value="🍽️"><button class="btn w" onclick=addP()>Add item</button></div>
+ <div class="card col"><b>Notun restaurant</b><input id=rn placeholder="Restaurant name"><input id=rc placeholder="Cuisine"><button class="btn w" onclick=addR()>Add restaurant</button></div>`+
+ prods.map(p=>`<div class=card><div class=em>${esc(p.emoji)}</div><div class=g><b>${esc(p.name)}</b><small>${esc(rests.find(r=>r.id==p.restaurant_id)?.name||'')} · ${tk(p.price)}</small></div>
+ <button class="btn ${p.is_available?'':'alt'}" onclick="togP('${p.id}',${!p.is_available})">${p.is_available?'On':'Off'}</button></div>`).join(''))}
+async function addP(){const name=$('#pn').value.trim(),price=+$('#pp').value;if(!$('#pr_r').value||!name||!(price>=0)||$('#pp').value==='')return alert('Restaurant, item name ar price dao.');
+ const{error}=await sb.from('products').insert({restaurant_id:$('#pr_r').value,name,price,emoji:$('#pe').value.trim()||'🍽️'});if(error)alert(error.message);vMenuA()}
+async function addR(){const name=$('#rn').value.trim();if(!name)return alert('Restaurant er naam dao.');
+ const{error}=await sb.from('restaurants').insert({name,cuisine:$('#rc').value.trim()});if(error)alert(error.message);vMenuA()}
+async function togP(id,v){const{error}=await sb.from('products').update({is_available:v}).eq('id',id);if(error)alert(error.message);vMenuA()}
+
+const V={customer:{menu:vMenu,cart:vCart,orders:vOrdC},rider:{avail:vAvail,mine:vMine},admin:{dash:vDash,orders:vOrdA,users:vUsers,menu:vMenuA}};
+setInterval(()=>{if(document.activeElement&&/SELECT|INPUT|TEXTAREA/.test(document.activeElement.tagName))return;if(me&&['orders','avail','mine','dash'].includes(cur))go(cur)},15000);
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+init();
+</script></body></html>
